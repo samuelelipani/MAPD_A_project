@@ -1,0 +1,57 @@
+uart_receiver è identico
+uart_transmitter è identico, a sua volta
+baudrate_generator idem
+sampler_generator idem
+top: a parte i coefficienti (che loro definiscono qui, mentre noi dentro il fir filter) non dichiarano busy nella entity top (ma commentando semplicemente nel nostro
+non va bene perché da qualche parte resta un riferimento); inoltre hanno alcune variabili inutilizzate (ad es. un clock mai usato, ridefiniscono un clk nelle porte 
+di ogni component e poi lo mappano a CLK100MHZ. A parte questo sembra tutto uguale! Nota: quel busy è stato rimosso nella versione a 8 taps presente in fellaa
+(Le verifiche di cui sopra sono state fatte esattamente sia per benassif che per fellaa, tranne il top che è stato analizzato per bene per benassif ma sfogliato solamente
+senza confronto esatto per fellaa).
+
+Guardo adesso il fir di fellaa. A parte i nomi diversi e il fatto che i loro coefficienti siano in input e quindi presenti in entity/port (da noi no) le cose sono simili.
+Differenza: noi abbiamo 2 segnali di validation (valid_1 e valid_2) e output_s + final_s, da loro vedo solo un valid_out (escludendo i vari buffer, coeff, add, ecc che sono
+tutti uguali a parte i nomi)
+
+Poi: noi abbiamo il processo upload da loro completamente assente (la parte in cui Lorenzo scarta i primi numeri inutili?). Upload contiene la riga
+buffer_s   <= signed(data_input)&buffer_s(0 to buffer_s'length-2);  che da loro si trova all'inizio del loro primo processo (parte del nostro filter, che ingloba il loro 
+p_input)
+
+Entrambi definiamo gli 8 coefficienti, che però da loro sono presi da input port mentre da noi vengono assegnati numericamente qui.
+
+La moltiplicazione è identica (a parte che loro la fanno con un loop) MA si trova in un processo separato. Le condizioni, tuttavia, sono uguali, cioè if rising_edge(clock)
+e poi if valid_1 = '1' (ahia! Loro usano il validation definito nella port entity, non un segnale...)
+Lo stesso vale per add0, add1 e add2 (if diverso, loop vs non loop, per il resto stessi reshape eccetera)
+
+i dati in output vengono calcolati da noi nel processone ma assegnati solo condizionalmente nel processo di uscita; da loro il calcolo dei dati di output avviene solo nel
+processo di uscita quando condizionalmente va bene fare uscire i dati
+
+Poi da noi alla fine del processone c'è un aggiornamento manuale di valid_1 e valid_2 (che da loro non esistono, si prendono solo gli input nella entity port - proveniente
+credo dal receiver uart); questo aggiornamento manuale avviene con un if che non capisco
+
+Processo di output alla fine: stessi if (i.e. stesse condizioni) e stessa assegnazione del valid_out del dir filter, MA sono in ordine diverso/con else vs elsif 
+(irrilevante), con valid_1 vs quello della entity port (rilevante?)
+
+Loro hanno due variabili distinte per la porta e il segnale relativi a valid_out, quindi alla fine del processo devono comunque aggiornare la porta con il valore del segnale
+calcolato condizionalmente (mentre da noi calcolare il segnale automaticamente setta anche la porta)
+
+Infine: nel caso in cui si assegna 0 alla valid_out da noi c'è la riga data_output <= (others => '0'); , il cui loro equivalente è commentato (interessante)
+
+DIFFERENZE IMPORTANTI TROVATE NEL FIR FILTER:
+- processi distinti/unici (dentro un process il codice è sequenziale? se sì fa differenza, probabilmente). Forse non rilevante, forse sì
+
+- s_buffer riassegnato sempre nel processo upload nostro, mentre nel loro processo di p_input viene assegnato condizionalmente come gli 8 coefficienti. Forse non rilevante
+
+- In entrambi i processi nostri (filter e output) c'è nested con if rising_edge(clock) la condizione if valid_1 = '1' dove valid_1 è un segnale - cioè non stiamo usando 
+il validation definito nella entity port, a differenza loro. Forse rilevante! 
+
+- Distinzione fra segnale ed entity port in merito al valid_out. Probabilmente irrilevante
+
+- Output con gli if diversi (segnale vs port) + assegnazione del data output con others => 0 nel caso di valid_out = 0. Rilevante?
+
+NOTA: forse accorpare i processi fa una differenza non banale. Magari ci mette troppo a calcolare i coefficienti rispetto a quello che intanto viene mandato fuori dal processo
+output... Se non altro vale la pena di fare un tentativo! (Qualcosa di analogo vale per il segnale/porta di validation in ingresso e per il commentare o meno la riga 
+data_output <= (others => '0'); )
+
+NOTA: prova a levare il busy inutilizzato in cima al top, è quello che causa errori in entrambe le fasi di compilazione - fallisce il writestream, il che forse è ciò che 
+fra le altre cose ci dà problemi... Il top degli altri sembra uguale ma proprio con quel busy omesso (e definito invece come segnale, cosa che sembra più safe), 
+segnalato a noi dal compilatore (che suggerisce anche una impostazione per disabilitare l'errore, ma non mi va di provarla..!)

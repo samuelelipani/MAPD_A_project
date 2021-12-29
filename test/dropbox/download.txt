@@ -1,0 +1,2 @@
+wget https://www.dropbox.com/s/rczxywa4jvdiuwu/segnale.txt?dl=1
+wget https://www.dropbox.com/s/pak015w3xin9otu/serial.py?dl=1
